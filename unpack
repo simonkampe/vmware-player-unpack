@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 
-file=$1
+FILE=`realpath $1`
+EXTRACT_DIR=$2
 
 # Set constants used when calculating payloads
 FOOTER_SIZE=52
 
-FILE_SIZE=`stat --format "%s" "$file"`
+FILE_SIZE=`stat --format "%s" "$FILE"`
 offset=$(($FILE_SIZE - 4))
 
 MAGIC_OFFSET=$offset
@@ -33,28 +34,19 @@ PAYLOAD_SIZE_OFFSET=$offset
 offset=$(($offset - 4))
 
 set_lengths() {
-    local file=`realpath $1`
-    LAUNCHER_SIZE=`od -An -t u4 -N 4 -j $LAUNCHER_SIZE_OFFSET "$file" | tr -d ' '`
-    PAYLOAD_SIZE=`od -An -t u4 -N 4 -j $PAYLOAD_SIZE_OFFSET "$file" | tr -d ' '`
-    PREPAYLOAD_SIZE=`od -An -t u4 -N 4 -j $PREPAYLOAD_SIZE_OFFSET "$file" | tr -d ' '`
+    LAUNCHER_SIZE=`od -An -t u4 -N 4 -j $LAUNCHER_SIZE_OFFSET "$FILE" | tr -d ' '`
+    PAYLOAD_SIZE=`od -An -t u4 -N 4 -j $PAYLOAD_SIZE_OFFSET "$FILE" | tr -d ' '`
+    PREPAYLOAD_SIZE=`od -An -t u4 -N 4 -j $PREPAYLOAD_SIZE_OFFSET "$FILE" | tr -d ' '`
     SKIP_BYTES=$(($PREPAYLOAD_SIZE + $LAUNCHER_SIZE))
     return 0
 }
 
 extract_installer() {
-    local file=`realpath $1`
-    local dir="installer"
-    rm -rf $dir
-    mkdir "$dir"
-
-    if [ ! -d "$dir" ]; then
-        echo "Unable to create installer directory"
-        exit 1
-    fi
+    mkdir -p "$EXTRACT_DIR"/installer
 
     echo -n "Extracting VMware installer..."
 
-    (cd $dir && dd if="$file" ibs=$SKIP_BYTES obs=1024 skip=1 | gunzip -c | tar -xf -)
+    (dd if="$FILE" ibs=$SKIP_BYTES obs=1024 skip=1 | gunzip -c | tar -xf - -C "$EXTRACT_DIR"/installer)
 
     if [ ! -e "$bootstrapper" ]; then
         echo "done."
@@ -62,22 +54,14 @@ extract_installer() {
 }
 
 extract_prepayload() {
-    local file=`realpath $1`
-    local dir="prepayload"
-    rm -rf $dir
-    mkdir "$dir"
+    mkdir -p "$EXTRACT_DIR"/prepayload
 
-    if [ ! -d "$dir" ]; then
-        echo "Unable to create payload directory"
-        exit 1
-    fi
+    echo -n "Extracting VMware pre-payload..."
 
-    echo -n "Extracting VMware installer..."
-
-    (cd $dir && dd if="$file" ibs=$LAUNCHER_SIZE obs=1024 skip=1 | gunzip -c | tar -xf -)
+    (dd if="$FILE" ibs=$LAUNCHER_SIZE obs=1024 skip=1 | gunzip -c | tar -xf - -C "$EXTRACT_DIR"/prepayload)
 }
 
-echo "Extracting: $file"
-set_lengths $file
-extract_installer $file
-extract_prepayload $file
+echo "Extracting: $FILE"
+set_lengths
+extract_installer
+extract_prepayload
